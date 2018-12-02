@@ -5,14 +5,47 @@
 # No fields may be None, except episodeN if type is not TV.
 class anime:
 
-    showType = None # The type of show (TV, Movie, OVA, etc) [string]
-    source = None # The source of the show (Manga, Original, etc) [string]
-    episodeN = None # The episode count (only when type is TV, otherwise should be None) [int]
-    rating = None # The rating of the show (PG, M, etc) [string]
-    studio = [] # The studios that made the show [list of string]
-    genre = [] # The genres of the show [list of string]
-    duration = None # The duration of each episode in minutes [int]
-    start_year = None # The year when the show started airing [int]
+    def __init__( self ):
+
+        self.showType = None # The type of show (TV, Movie, OVA, etc) [string]
+        self.source = None # The source of the show (Manga, Original, etc) [string]
+        self.episodeN = None # The episode count (only when type is TV, otherwise should be None) [int]
+        self.rating = None # The rating of the show (PG, M, etc) [string]
+        self.studio = [] # The studios that made the show [list of string]
+        self.genre = [] # The genres of the show [list of string]
+        self.duration = None # The duration of each episode in minutes [int]
+        self.start_year = None # The year when the show started airing [int]
+
+    def getTags( self ):
+
+        tags = []
+        tags.append( 'type:' + self.showType )
+        tags.append( 'source:' + self.source )
+        tags.append( 'episodeN:' + str( self.episodeN ) )
+        tags.append( 'rating:' + str( self.rating ) )
+        for s in self.studio:
+            
+            tags.append( 'studio:' + s )
+
+        for g in self.genre:
+            
+            tags.append( 'genre:' + g )
+
+        tags.append( 'duration:' + str( self.duration ) )
+        tags.append( 'start_year:' + str( self.start_year ) )
+
+        return tags
+
+    def validate( self ):
+        
+        assert self.showType is not None
+        assert self.source is not None
+        assert self.episodeN is not None if self.showType == 'TV' else self.episodeN is None
+        assert self.rating is not None
+        assert self.studio
+        assert self.genre
+        assert self.duration is not None
+        assert self.start_year is not None
 
 # Initializes the predictive engine.
 # Must be called before calling any other function.
@@ -21,7 +54,28 @@ class anime:
 # - animeList: The animes in the database. Must be a map where the key is the title and the value is an instance of the anime class.
 # - scores: The scores given to each anime by each user. Must be a list of tuples (username [string], title [string], score [int]).
 #           Score must be in the range [1,10].
-def intialize( animeList, scores ):
+def initialize( animeList, scores ):
+
+    # Validate all anime entries
+    for title, a in animeList.items():
+
+        assert title
+        a.validate()
+
+    # Collapse score list into maps of users to scores
+    userLists = {}
+    for username, title, score in scores:
+
+        assert username
+        assert title
+        assert 1 <= score <= 10
+
+        if username not in userLists:
+            userLists[username] = {}
+
+        userLists[username][title] = score
+
+    # TODO: Calculate probs
 
     return
 
