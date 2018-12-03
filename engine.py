@@ -1,3 +1,6 @@
+import random
+from engine_helpers import *
+
 # Module that handles probability calculations
 
 # Represents an anime in the database.
@@ -47,6 +50,16 @@ class anime:
         assert self.duration is not None
         assert self.start_year is not None
 
+animes = None
+
+PY_anime = None
+PR_anime = None
+PY_anime_user = None
+
+PY_tag = None
+PR_tag = None
+PY_tag_user = None
+
 # Initializes the predictive engine.
 # Must be called before calling any other function.
 #
@@ -62,21 +75,79 @@ def initialize( animeList, scores ):
         assert title
         a.validate()
 
+    # Save to global
+    global animes
+    animes = animeList
+
     # Collapse score list into maps of users to scores
-    userLists = {}
+    userAnimeLists = {}
     for username, title, score in scores:
 
         assert username
         assert title
-        assert 1 <= score <= 10
+        assert minScore <= score <= maxScore
 
-        if username not in userLists:
-            userLists[username] = {}
+        if username not in userAnimeLists:
+            userAnimeLists[username] = {}
 
-        userLists[username][title] = score
+        userAnimeLists[username][title] = score
 
-    # TODO: Calculate probs
+    # Add unrated shows
+    for userList in userAnimeLists.values():
 
+        for title in animeList:
+
+            if title not in userList:
+                userList[title] = None
+
+    # Calculate PY and PR for animes in the database
+    global PY_anime
+    global PR_anime
+    PY_anime, PR_anime = runEM( animeList.keys(), userAnimeLists )
+
+    # Precompute PY for each user
+    global PY_anime_user
+    PY_anime_user = {username:[probY( PY_anime, PR_anime, userAnimeLists[username], i ) for i in range( len( PY_anime ) )] for username in userAnimeLists}
+    for PY in PY_anime_user.values():
+
+        assert tolerantEquals( sum( PY ), 1.0 )
+
+    # Obtain tag set
+    tags = set()
+    for title, a in animeList.items():
+
+        for tag in a.getTags():
+
+            tags.add( tag )
+
+    # Calculate average tag scores for each user
+    userTagLists = {}
+    for user in userAnimeLists:
+
+        tagScore = {t:0 for t in tags}
+        tagCount = {t:0 for t in tags}
+
+        for title, score in userAnimeLists[user].items():
+
+            if score is not None:
+                for tag in animeList[title].getTags():
+
+                    tagScore[tag] += score
+                    tagCount[tag] += 1
+
+        userTagLists[user] = {tag:(int( round( tagScore[tag]/tagCount[tag] ) ) if tagCount[tag] > 0 else None) for tag in tags}
+
+    global PY_tag
+    global PR_tag
+    PY_tag, PR_tag = runEM( tags, userTagLists )
+
+    # Precompute PY for each user
+    global PY_tag_user
+    PY_tag_user = {username:[probY( PY_tag, PR_tag, userTagLists[username], i ) for i in range( len( PY_tag ) )] for username in userTagLists}
+    for PY in PY_tag_user.values():
+
+        assert tolerantEquals( sum( PY ), 1.0 )
+    
     return
 
 # Calculates the probability of the given user give the given score to the given show.
@@ -93,4 +164,21 @@ def initialize( animeList, scores ):
 #   did not match any know show, returns None.
 def scoreProb( username, score, title, info=None ):
 
-    return 0.0
+    if username not in PY_tag_user:
+        return None
+
+    if not ( minScore <= score <= maxScore ):
+        return None
+
+    if info is None:
+        if title not in animes:
+            return None
+        else:
+            info = animes[title]
+
+    p = 1.0
+    for tag in info.getTags():
+
+        p *= sum( [( PY_tag_user[username][i] * PR_tag[tag][score][i] ) for i in range( len( PY_tag ) )] )
+
+    return p
