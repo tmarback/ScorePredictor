@@ -13,11 +13,28 @@ class anime:
         self.showType = None # The type of show (TV, Movie, OVA, etc) [string]
         self.source = None # The source of the show (Manga, Original, etc) [string]
         self.episodeN = None # The episode count (only when type is TV, otherwise should be None) [int]
-        self.rating = None # The rating of the show (PG, M, etc) [string]
+        self.rating = None # The rating of the show (PG, M, etc) [string
         self.studio = [] # The studios that made the show [list of string]
         self.genre = [] # The genres of the show [list of string]
         self.duration = None # The duration of each episode in minutes [int]
         self.start_year = None # The year when the show started airing [int]
+    
+    def __init__( self, sType=None, sSource=None, nEpisode=None, sRating=None, lStudio=None, lGenre=None, nDuration=None, nStart=None ):
+
+        self.showType = sType # The type of show (TV, Movie, OVA, etc) [string]
+        self.source = sSource # The source of the show (Manga, Original, etc) [string]
+        self.episodeN = nEpisode # The episode count (only when type is TV, otherwise should be None) [int]
+        self.rating = sRating # The rating of the show (PG, M, etc) [string]
+        if lStudio is None:
+            self.studio = [] # The studios that made the show [list of string]
+        else:
+            self.studio = lStudio
+        if lGenre is None:
+            self.genre = [] # The genres of the show [list of string]
+        else:
+            self.genre = lGenre
+        self.duration = nDuration # The duration of each episode in minutes [int]
+        self.start_year = nStart # The year when the show started airing [int]
 
     def getTags( self ):
 
