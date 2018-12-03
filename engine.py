@@ -1,4 +1,4 @@
-import random
+from statistics import mean
 from engine_helpers import *
 
 # Module that handles probability calculations
@@ -176,9 +176,5 @@ def scoreProb( username, score, title, info=None ):
         else:
             info = animes[title]
 
-    p = 1.0
-    for tag in info.getTags():
+    return mean([sum( [( PY_tag_user[username][i] * PR_tag[tag][score][i] ) for i in range( len( PY_tag ) )] ) for tag in info.getTags()])
 
-        p *= sum( [( PY_tag_user[username][i] * PR_tag[tag][score][i] ) for i in range( len( PY_tag ) )] )
-
-    return p
