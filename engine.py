@@ -11,8 +11,8 @@ class anime:
         self.source = None # The source of the show (Manga, Original, etc) [string]
         self.episodeN = None # The episode count (only when type is TV, otherwise should be None) [int]
         self.rating = None # The rating of the show (PG, M, etc) [string
-         self.studio = [] # The studios that made the show [list of string]
-         self.genre = [] # The genres of the show [list of string]
+        self.studio = [] # The studios that made the show [list of string]
+        self.genre = [] # The genres of the show [list of string]
         self.duration = None # The duration of each episode in minutes [int]
         self.start_year = None # The year when the show started airing [int]
     
