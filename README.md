@@ -1,7 +1,7 @@
 # CSE150_HW7
-##Problem description:
+## Problem description:
 Naive Bayes. Given a user and a show in the database, give weights to each user type they may be from past shows they’ve watched and then predict the rating they would give to this show based on the ratings they gave to tags present in the show. In summary, basically, predict the rating a user would give a show based on its tags.
 
-##What to expect/What we plan to deliver
+## What to expect/What we plan to deliver
   For this HW7, we will be expanding upon what we did in HW5, 3. For this, we will be extending it to other real world applications on a much larger dataset. Base assumption is that tags of movie give more indication of the rating. We will be extending it from simple binary recommends or not to include tags that would generally represent a movie and numerical ratings.
 We will be using a dataset of MAL(myanimelist) show ratings and predicting a rating a user would give to a show with some given tags. Our model will first predict the type of user based on how the user rated shows (specifically focus on the tags of the show) they watched. This set of user types is unknown at the moment. We do this for all users. Then assign weights on how each usertype would rate a movie based on a tag. Then we use these base weights to predict how a usertype would rate a new movie based on its tags. At the end we sum up all the usertype scores to give the expected rating. The output is the most likely score a random average user would give to a show that has a certain set of tags.
