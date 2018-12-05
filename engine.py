@@ -86,6 +86,8 @@ PY_tag_user = None
 #           Score must be in the range [1,10].
 def initialize( animeList, scores ):
 
+    print( 'Validating data' )
+
     # Validate all anime entries
     for title, a in animeList.items():
 
@@ -95,6 +97,8 @@ def initialize( animeList, scores ):
     # Save to global
     global animes
     animes = animeList
+
+    print( 'Parsing user lists' )
 
     # Collapse score list into maps of users to scores
     userAnimeLists = {}
@@ -117,6 +121,8 @@ def initialize( animeList, scores ):
             if title not in userList:
                 userList[title] = None
 
+    print( 'Calculating per-anime probabilities' )
+
     # Calculate PY and PR for animes in the database
     global PY_anime
     global PR_anime
@@ -128,6 +134,8 @@ def initialize( animeList, scores ):
     for PY in PY_anime_user.values():
 
         assert tolerantEquals( sum( PY ), 1.0 )
+
+    print( 'Parsing tags' )
 
     # Obtain tag set
     tags = set()
@@ -154,6 +162,8 @@ def initialize( animeList, scores ):
 
         userTagLists[user] = {tag:(int( round( tagScore[tag]/tagCount[tag] ) ) if tagCount[tag] > 0 else None) for tag in tags}
 
+    print( 'Calculating per-tag probabilities' )
+    
     global PY_tag
     global PR_tag
     PY_tag, PR_tag = runEM( tags, userTagLists )
@@ -165,6 +175,8 @@ def initialize( animeList, scores ):
 
         assert tolerantEquals( sum( PY ), 1.0 )
     
+    print( 'Engine initialized' )
+
     return
 
 # Calculates the probability of the given user give the given score to the given show.

@@ -6,7 +6,7 @@
 
 import pandas as pd
 from collections import defaultdict
-from .engine import anime
+from engine import anime
 
 
 # In[2]:
@@ -77,7 +77,7 @@ def getAnimeIdDict(anime_csv):
     chunky_b = []
     for chunk in pd.read_csv(anime_csv, index_col = 0, usecols=['anime_id', 'title'], chunksize=chunksize):
         chunky_b.append(chunk)
-    animeids_dict = pd.concat(chunky_b, axis=0).to_dict()
+    anime_dict = pd.concat(chunky_b, axis=0).to_dict()
     id_titles = anime_dict['title']
     del chunky_b
     return id_titles
