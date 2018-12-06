@@ -114,6 +114,7 @@ def vProbY( PY, PR, r, y ):
 # - The updated PR
 def update( PY, PR, r ):
 
+    print( 'Updating PY' )
     T = r.shape[0]
     k, n, S = PR.shape
     pit = np.empty( ( k, T ) )
@@ -124,17 +125,19 @@ def update( PY, PR, r ):
     pi = logsumexp( pit, axis = 1 )
     newPY = np.log( 1 / T ) + pi
     
-    unrated = np.equal( r, -1 )
-    newPR = np.zeros( k, n, s )
+    print( 'Updating PR' )
+    newPR = np.zeros( ( k, n, S ) )
     for j in range( n ):
 
-        for s in range( s ):
+        for s in range( S ):
  
             scoreMatch = np.equal( r[:,j], s )
             unrated = np.equal( r[:,j], -1 )
             for i in range( k ):
 
-                newPR[i][j][s] = np.logaddexp( logsumexp( np.extract( scoreMatch, pit[i] ) ), logsumexp( np.extract( unrated, pit[i] ) + PR[i][j][s] ) ) - pi[i]
+                ratedPits = np.extract( scoreMatch, pit[i] )
+                unratedPits = np.extract( unrated, pit[i] )
+                newPR[i][j][s] = np.logaddexp( logsumexp( ratedPits ) if ratedPits.size > 0 else 0, logsumexp( unratedPits ) + PR[i][j][s] if unratedPits.size > 0 else 0 ) - pi[i]
         
     return newPY, newPR
 
@@ -166,12 +169,13 @@ def runEM( userLists ):
 
         print( 'Running iteration %d' % ( i + 1 ) )
         PY, PR = update( PY, PR, userLists )
+        print( 'Updating likelihood' )
         likelihood = logLikelihood( PY, PR, userLists )
         assert likelihood >= oldLikelihood # Ensure likelihood does not decrease
         oldLikelihood = likelihood
         print( 'Iteration completed' )
 
-        completedSteps = ( i + 1 ) * 100 / runs 
+        completedSteps = int( ( i + 1 ) * 100 / runs )
         if completedSteps > oldCompletedSteps:
             print( '%d%% complete' % completedSteps )
             oldCompletedSteps = completedSteps
