@@ -1,5 +1,7 @@
 from statistics import mean
 from engine_helpers import *
+import numpy as np
+from scipy.misc import logsumexp
 
 # Module that handles probability calculations
 
@@ -68,6 +70,12 @@ class anime:
         assert self.start_year is not None
 
 animes = None
+animeData = None
+tags = None
+users = None
+
+animeRatings = None
+tagRatings = None
 
 PY_anime = None
 PR_anime = None
@@ -92,17 +100,28 @@ def initialize( animeList, scores ):
     for title, a in animeList.items():
 
         assert title
+        assert a
         a.validate()
 
-    # Save to global
+    # Map to array indices
     global animes
-    animes = animeList
+    global animeData
+    animes = {}
+    animeData = []
+    i = 0
+    for anime, data in animeList.items():
+
+        animes[anime] = i
+        animeData.append( data )
+        i += 1
 
     print( 'Parsing user lists' )
 
     # Collapse score list into maps of users to scores
     userAnimeLists = {}
-    for username, title, score in scores:
+    while scores:
+
+        username, title, score = scores.pop()
 
         assert username
         assert title
@@ -113,68 +132,97 @@ def initialize( animeList, scores ):
 
         userAnimeLists[username][title] = score
 
-    # Add unrated shows
-    for userList in userAnimeLists.values():
+    # Map users to array indices
+    global users
+    users = {}
+    i = 0
+    for username in userAnimeLists:
 
-        for title in animeList:
+      users[username] = i
+      i += 1
 
-            if title not in userList:
-                userList[title] = None
+    # Convert anime ratings to array
+    global animeRatings
+    animeRatings = np.full( ( len( users ), len( animes ) ), -1 )
+    for user in users:
 
+        for anime in userAnimeLists[user]:
+
+            animeRatings[users[user]][animes[anime]] = userAnimeLists[user][anime] - minScore
+    
     print( 'Calculating per-anime probabilities' )
 
     # Calculate PY and PR for animes in the database
     global PY_anime
     global PR_anime
-    PY_anime, PR_anime = runEM( animeList.keys(), userAnimeLists )
+    PY_anime, PR_anime = runEM( animeRatings )
 
     # Precompute PY for each user
     global PY_anime_user
-    PY_anime_user = {username:[probY( PY_anime, PR_anime, userAnimeLists[username], i ) for i in range( len( PY_anime ) )] for username in userAnimeLists}
-    for PY in PY_anime_user.values():
+    PY_anime_user = np.zeros( PY_anime.size, len( users ) )
+    for i in range( PY_anime.size ):
 
-        assert tolerantEquals( sum( PY ), 1.0 )
+        PY_anime_user[i] = vProbY( PY_anime, PR_anime, animeRatings, i )
+
+    assert aTolerantEquals( logsumexp( PY_anime_user, axis = 1 ), 0.0 )
 
     print( 'Parsing tags' )
 
     # Obtain tag set
-    tags = set()
+    tagSet = set()
     for title, a in animeList.items():
 
         for tag in a.getTags():
 
-            tags.add( tag )
+            tagSet.add( tag )
+
+    # Map tags to array indices
+    global tags
+    tags = {}
+    i = 0
+    for tag in tagSet:
+
+        tags[tag] = i
+        i += 1
 
     # Calculate average tag scores for each user
-    userTagLists = {}
+    global tagRatings
+    tagRatings = np.full( ( len( users ), len( tags ) ), -1 )
     for user in userAnimeLists:
 
-        tagScore = {t:0 for t in tags}
-        tagCount = {t:0 for t in tags}
+        tagScore = {}
+        tagCount = {}
 
         for title, score in userAnimeLists[user].items():
 
             if score is not None:
                 for tag in animeList[title].getTags():
 
+                    if tag not in tagScore:
+                        tagScore[tag] = 0
+                        tagCount[tag] = 0
                     tagScore[tag] += score
                     tagCount[tag] += 1
 
-        userTagLists[user] = {tag:(int( round( tagScore[tag]/tagCount[tag] ) ) if tagCount[tag] > 0 else None) for tag in tags}
+        for tag in tagScore:
+            
+            tagRatings[users[user]][tags[tag]] = int( round( tagScore[tag]/tagCount[tag] ) )
 
     print( 'Calculating per-tag probabilities' )
     
     global PY_tag
     global PR_tag
-    PY_tag, PR_tag = runEM( tags, userTagLists )
+    PY_tag, PR_tag = runEM( tagRatings )
 
     # Precompute PY for each user
     global PY_tag_user
-    PY_tag_user = {username:[probY( PY_tag, PR_tag, userTagLists[username], i ) for i in range( len( PY_tag ) )] for username in userTagLists}
-    for PY in PY_tag_user.values():
+    PY_tag_user = np.zeros( PY_tag.size, len( users ) )
+    for i in range( PY_tag.size ):
 
-        assert tolerantEquals( sum( PY ), 1.0 )
-    
+        PY_tag_user[i] = vProbY( PY_tag, PR_tag, tagRatings, i )
+
+    assert aTolerantEquals( logsumexp( PY_tag_user, axis = 1 ), 0.0 )
+
     print( 'Engine initialized' )
 
     return

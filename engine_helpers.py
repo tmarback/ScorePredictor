@@ -1,7 +1,8 @@
 # Helper functions for the probability engine.
-
 import math
 import random
+import numpy as np
+from scipy.misc import logsumexp
 
 numUserTypes = 15
 maxScore = 10
@@ -17,171 +18,168 @@ errorTolerance = 0.000000001
 
 # Determines if the given value is equal to the given expected value,
 # within tolerance (used to account for rounding errors in floating-point
-# values),
+# values)
 def tolerantEquals( val, expected ):
 
     return ( expected - errorTolerance ) <= val <= ( expected + errorTolerance )
+
+# Determines if the values in the given array are equal to the given expected value,
+# within tolerance (used to account for rounding errors in floating-point
+# values)
+def aTolerantEquals( array, expected ):
+ 
+    return np.all( np.logical_and( np.greater_equal( array, expected - errorTolerance ), np.less_equal( array, expected + errorTolerance ) ) )
 
 # Calculates part of the likelihood (a single value of y)
 # of a user's ratings.
 # In other words, calculates P(Y=y)PROD[P(R=r|Y=y)]
 # 
 # Parameters:
-# PY - PY[y] = P(Y=y)
-# PR - PR[j][r][y] = P(Rj=r|Y=y) (j is the title)
-# y - The value of Y
-# r - The user's ratings (map from title to rating)
+# PY - PY = log P(Y=y)
+# PR - PR[j][r] = log P(R_j=r|Y=y)
+# r - r[j] = r^t_j - The user's ratings
 # 
 # Returns:
-# - P(Y=y)PROD[P(R=r|Y=y)]
-def probEvidenceForUserPartial( PY, PR, y, r ):
+# - log P(Y=y)PROD[P(R=r|Y=y)]
+def logQ( PY, PR, r ):
 
-    P = PY[y]
-    for j in r:
+    rated = np.not_equal( r, np.full( r.size, -1 ) )
+    rated_j = np.extract( rated, np.arange( 0, r.size ) )
+    ratings = np.extract( rated, r )
+    return PY + np.sum( PR[rated_j, ratings] )
 
-        if r[j] != None: # Student watched this movie
-            P *= PR[j][r[j]][y]
+# Vectorized version of logQ
+vLogQ = np.vectorize( logQ, signature = '(),(j,r),(j)->()' )
 
-    return P
-
-# Calculates the likelihood of a user's ratings.
-# In other words, calculates P(R=r(t))
+# Calculates the (log) likelihood of a user's ratings.
+# In other words, calculates log P(R=r(t))
 #
 # Parameters:
-# PY - PY[y] = P(Y=y)
-# PR - PR[j][r][y] = P(Rj=r|Y=y) (j is the title)
-# r - The user's ratings (map from title to rating)
+# PY - PY[y] = log P(Y=y)
+# PR - PR[y][j][r] = log P(Rj=r|Y=y)
+# r - r[j] = r^t_j - The user's ratings
 #
 # Returns:
-# - P(R=r(t))
+# - log P(R=r(t))
 def probEvidenceForUser( PY, PR, r ):
 
-    P = 0
-    for i in range( len( PY ) ):
+    qs = vLogQ( PY, PR, r ) # Calculate log q for each y
+    return logsumexp( qs )
 
-        P += probEvidenceForUserPartial( PY, PR, i, r )
-        
-    return P
+# Vectorized version of probEvidenceForUser
+vProbEvidenceForUser = np.vectorize( probEvidenceForUser, signature = '(y),(y,j,r),(j)->()' )
 
 # Calculates the log-likelihood of the current state.
 #
 # Parameters:
-# PY - PY[y] = P(Y=y)
-# PR - PR[j][r][y] = P(Rj=r|Y=y) (j is the title)
-# r - The ratings of each user, where r[t] is the map
-#     of ratings for student t (map from title to rating)
+# PY - PY[y] = log P(Y=y)
+# PR - PR[y][j][r] = log P(Rj=r|Y=y) 
+# r - r[t][j] = r^t_j - The ratings of each user
 #
 # Returns:
 # - The log-likelihood
 def logLikelihood( PY, PR, r ):
 
-    L = 0.0
-    for t in r:
+    return np.sum( vProbEvidenceForUser( PY, PR, r ) ) / len( r )
 
-        L += math.log( probEvidenceForUser( PY, PR, r[t] ) )
-
-    return L / len( r )
-
-# Calculates P(Y=y|{Rj=rj(t)}) for a specific user t.
+# Calculates log P(Y=y|{Rj=rj(t)}) for a specific user t.
 #
 # Parameters:
-# PY - PY[y] = P(Y=y)
-# PR - PR[j][r][y] = P(Rj=r|Y=y) (j is the title)
-# r - The user's ratings (map from title to rating)
+# PY - PY[y] = log P(Y=y)
+# PR - PR[y][j][r] = log P(Rj=r|Y=y)
+# r - r[j] = r^t_j - The user's ratings
 # y - The value of y
 #
 # Returns:
-# - P(Y=y|{Rj=rj(t)})
+# - log P(Y=y|{Rj=rj(t)})
 def probY( PY, PR, r, y ):
 
-    return probEvidenceForUserPartial( PY, PR, y, r ) / probEvidenceForUser( PY, PR, r )
+    return logQ( PY[y], PR[y], r ) - probEvidenceForUser( PY, PR, r )
+
+# Vectorized version of probY over t
+# (y),(y,j,r),(t,j),()->(t)
+def vProbY( PY, PR, r, y ):
+
+    return vLogQ( PY[y], PR[y], r ) - vProbEvidenceForUser( PY, PR, r )
 
 # Runs an iteration of the EM algorithm.
 #
 # Parameters:
-# PY - PY[y] = P(Y=y)
-# PR - PR[j][r][y] = P(Rj=r|Y=y) (j is the title)
-# r - The ratings of each user, where r[t] is the map
-#     of ratings for the t-th user (map from title to rating)
+# PY - PY[y] = log P(Y=y)
+# PR - PR[y][j][r] = log P(Rj=r|Y=y) 
+# r - r[t][j] = r^t_j - The ratings of each user
 #
 # Returns:
 # - The updated PY
 # - The updated PR
 def update( PY, PR, r ):
 
-    T = len( r )
-    newPY = [0] * len( PY )
-    newPR = {t:{r:[0 for i in PR[t][r]] for r in PR[t]} for t in PR}
-    for i in range( len( PY ) ):
+    T = r.shape[0]
+    k, n, S = PR.shape
+    pit = np.empty( ( k, T ) )
+    for i in range( T ):
 
-        pit = {rt:probY( PY, PR, r[rt], i ) for rt in r}
+        pit[i] = vProbY( PY, PR, r, i )
 
-        total = 0
-        for p in pit:
-      
-            total += pit[p]
+    pi = logsumexp( pit, axis = 1 )
+    newPY = np.log( 1 / T ) + pi
+    
+    unrated = np.equal( r, -1 )
+    newPR = np.zeros( k, n, s )
+    for j in range( n ):
 
-        newPY[i] = total/T
+        for s in range( s ):
+ 
+            scoreMatch = np.equal( r[:,j], s )
+            unrated = np.equal( r[:,j], -1 )
+            for i in range( k ):
 
-        for j in PR:
-
-            for score in PR[j]:
-
-                totalRated = 0
-                totalUnrated = 0
-                for t in r:
-
-                    if r[t][j] != None:
-                        totalRated += pit[t] if r[t][j] == score else 0
-                    else:
-                        totalUnrated += pit[t] * PR[j][score][i]
-
-                newPR[j][score][i] = ( totalRated + totalUnrated ) / total
-
+                newPR[i][j][s] = np.logaddexp( logsumexp( np.extract( scoreMatch, pit[i] ) ), logsumexp( np.extract( unrated, pit[i] ) + PR[i][j][s] ) ) - pi[i]
+        
     return newPY, newPR
 
-def runEM( tagList, userLists ):
+# userLists - userLists[t][j] = r^t_j - The ratings of each user
+def runEM( userLists ):
 
     # Intialize probability of Y and R
-    PY = [1 / numUserTypes for i in range( numUserTypes )]
-    PR = {t:{r:[0 for i in range( numUserTypes )] for r in range( minScore, maxScore + 1 )} for t in tagList}
-    for t in PR:
+    PY = np.full( numUserTypes, np.log( 1 / numUserTypes ) )
+    PR = np.zeros( ( numUserTypes, userLists.shape[1], maxScore - minScore + 1 ) )
+    for i in range( PR.shape[0] ):
 
-        for i in range( numUserTypes ):
+        for j in range( PR.shape[1] ):
 
             remaining = 1.0
-            for r in range( minScore, maxScore ):
-                
-                PR[t][r][i] = remaining * random.uniform( minInitialProbFrac, maxInitialProbFrac )
-                remaining -= PR[t][r][i]
+            for s in range( PR.shape[2] - 1 ):
 
-            PR[t][maxScore][i] = remaining
+                p = remaining * random.uniform( minInitialProbFrac, maxInitialProbFrac )
+                PR[i][j][s] = p
+                remaining -= p
+
+            PR[i][j][PR.shape[2] - 1] = remaining
+
+    PR = np.log( PR )
 
     # Run EM algorithm
+    oldCompletedSteps = 0
     oldLikelihood = logLikelihood( PY, PR, userLists )
     for i in range( runs ):
 
+        print( 'Running iteration %d' % ( i + 1 ) )
         PY, PR = update( PY, PR, userLists )
         likelihood = logLikelihood( PY, PR, userLists )
         assert likelihood >= oldLikelihood # Ensure likelihood does not decrease
+        oldLikelihood = likelihood
+        print( 'Iteration completed' )
 
+        completedSteps = ( i + 1 ) * 100 / runs 
+        if completedSteps > oldCompletedSteps:
+            print( '%d%% complete' % completedSteps )
+            oldCompletedSteps = completedSteps
+
+    print( 'Final log-likelihood: %.5f' % oldLikelihood )
+    
     # Validate output
-    sumPY = 0.0
-    for p in PY:
-
-        sumPY += p
-
-    assert tolerantEquals( sumPY, 1.0 )
-
-    for t in PR.values():
-
-        for i in range( len( PY ) ):
-
-            sumPR = 0.0
-            for r in t.values():
-
-                sumPR += r[i]
-
-            assert tolerantEquals( sumPR, 1.0 )
+    assert tolerantEquals( logsumexp( PY ), 0.0 )
+    assert aTolerantEquals( logsumexp( PR, axis = 2 ), 0.0 )
 
     return PY, PR

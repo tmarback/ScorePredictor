@@ -7,7 +7,7 @@
 import pandas as pd
 from collections import defaultdict
 from engine import anime
-
+import engine
 
 # In[2]:
 
@@ -156,11 +156,13 @@ def getScore(anime_watch_csv, anime_csv):
 
 #animeList: map where the key is the title and the value is an instance of the anime class
 animeList_from_csv = getAnimeList(anime_cl)
+animeList = {title:anime[0] for title, anime in animeList_from_csv.items()} # Convert 1-element lists into pure values. TEMP FIX
 
 #scoreList: list of tuples (username [string], title [string], score [int]).
 #           Score must be in the range [1,10].
 scoreList = getScore(anime_watched, anime_cl)
 
+engine.initialize( animeList, scoreList )
 
 # In[143]:
 
@@ -224,4 +226,3 @@ scoreList = getScore(anime_watched, anime_cl)
 #user_scores = []
 #for i in range(0,len(usernames)):
 #    user_scores.append( (usernames[i], titles[i], users_cores[i]) )
-
