@@ -61,6 +61,7 @@ def vLogQ( PY, PR, r ):
 
     ratings = np.equal( r[:,:,np.newaxis], np.arange( PR.shape[2] )[np.newaxis,np.newaxis,:] )
     PR_picked = ratings[:,np.newaxis,:,:] * PR[np.newaxis,:,:,:]
+    PR_picked[np.isnan( PR_picked )] = 0 # In case of -inf
     P = PY[np.newaxis,:] + np.sum( PR_picked, axis = ( 2, 3 ) )
     assert np.all( np.less_equal( P, 0 ) )
     return P
@@ -170,27 +171,33 @@ def update( PY, PR, r ):
     assert not np.any( np.isnan( PY ) )
     assert not np.any( np.isinf( PY ) )
     
+    assert not np.any( np.isinf( pit ) )
+    assert not np.any( np.isinf( pi ) )
+    
     newPR = np.zeros( ( k, n, S ) )
     scores = np.transpose( r )
     unrated = np.equal( scores, -1 )
-    for s in range( S ):
+    s = np.arange( PR.shape[2] )
+    match = np.equal( scores[:,:,np.newaxis], s[np.newaxis,np.newaxis,:] )
+    notMatch = np.logical_not( np.logical_or( match, unrated[:,:,np.newaxis] ) )
+    notMatchFactor = np.zeros( ( n, T, S ) )
+    notMatchFactor[notMatch] = -np.inf
+    unratedFactor = PR[:,:,np.newaxis,:] * unrated[np.newaxis,:,:,np.newaxis]
+    unratedFactor[np.isnan( unratedFactor )] = 0
+    A = notMatchFactor[np.newaxis,:,:,:] + unratedFactor
+    newPR = logsumexp( pit[:,np.newaxis,:,np.newaxis] + A, axis = 2 )
+    newPR -= pi[:,np.newaxis,np.newaxis]
 
-        match = np.equal( scores, s )
-        notMatch = np.logical_not( np.logical_or( match, unrated ) )
-        notMatchFactor = np.zeros( ( n, T ) )
-        notMatchFactor[notMatch] = -np.inf
-        unratedFactor = PR[:,:,s,np.newaxis] * unrated[np.newaxis,:,:]
-        A = np.zeros( ( k, n, T ) ) + notMatchFactor[np.newaxis,:,:] + unratedFactor
-        newPR[:,:,s] = logsumexp( pit[:,np.newaxis,:] + A, axis = 2 ) - pi[:,np.newaxis]
-
-    assert np.all( np.less_equal( PR, 0 ) )
-    assert not np.any( np.isnan( PR ) )
-    assert not np.any( np.isinf( PR ) )
+    assert not np.any( np.isnan( newPR ) )
+    assert np.all( np.less_equal( newPR, 0 ) )
 
     return newPY, newPR
 
 # userLists - userLists[t][j] = r^t_j - The ratings of each user
 def runEM( userLists ):
+
+    assert np.all( np.logical_or( np.equal( userLists, -1 ), 
+            np.logical_and( np.greater_equal( userLists, 0 ), np.less_equal( userLists, maxScore - minScore + 1 ) ) ) )
 
     # Intialize probability of Y and R
     PY = np.full( numUserTypes, np.log( 1 / numUserTypes ) )
@@ -229,6 +236,7 @@ def runEM( userLists ):
     
     # Validate output
     assert tolerantEquals( logsumexp( PY ), 0.0 )
-    assert aTolerantEquals( logsumexp( PR, axis = 2 ), 0.0 )
+    a = logsumexp( PR, axis = 2 )
+    assert np.all( np.less_equal( logsumexp( PR, axis = 2 ), errorTolerance ) )
 
     return PY, PR

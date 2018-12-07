@@ -29,12 +29,16 @@ class anime:
         self.rating = sRating # The rating of the show (PG, M, etc) [string]
         if lStudio is None:
             self.studio = [] # The studios that made the show [list of string]
-        else:
+        elif isinstance( lStudio, list ):
             self.studio = lStudio
+        else:
+            self.studio = [lStudio]
         if lGenre is None:
             self.genre = [] # The genres of the show [list of string]
-        else:
+        elif isinstance( lGenre, list ):
             self.genre = lGenre
+        else:
+            self.genre = [lGenre]
         self.duration = nDuration # The duration of each episode in minutes [int]
         self.start_year = nStart # The year when the show started airing [int]
 
@@ -47,27 +51,40 @@ class anime:
         tags.append( 'rating:' + str( self.rating ) )
         for s in self.studio:
             
-            tags.append( 'studio:' + s )
+            tags.append( 'studio:' + str( s ) )
 
         for g in self.genre:
             
-            tags.append( 'genre:' + g )
+            tags.append( 'genre:' + str( g ) )
 
         tags.append( 'duration:' + str( self.duration ) )
         tags.append( 'start_year:' + str( self.start_year ) )
 
         return tags
 
+    def __str__( self ):
+
+        return "=====\nType: {0}\nSource: {1}\nEpisode #: {2:d}\nRating: {3}\nStudio: {4}\nGenre: {5}\nDuration: {6:d}\nStart Year: {7:d}\n=====".format(
+                self.showType, self.source, self.episodeN if self.episodeN else -1, self.rating, str( self.studio ), str( self.genre ), self.duration, self.start_year )
+
     def validate( self ):
         
         assert self.showType is not None
+        assert isinstance( self.showType, str )
         assert self.source is not None
+        assert isinstance( self.source, str )
         assert self.episodeN is not None if self.showType == 'TV' else self.episodeN is None
+        assert self.showType != 'TV' or isinstance( self.episodeN, int )
         assert self.rating is not None
+        assert isinstance( self.rating, str )
         assert self.studio
+        assert isinstance( self.studio, list )
         assert self.genre
+        assert isinstance( self.genre, list )
         assert self.duration is not None
+        assert isinstance( self.duration, int )
         assert self.start_year is not None
+        assert isinstance( self.start_year, int )
 
 animes = None
 animeData = None
@@ -101,7 +118,11 @@ def initialize( animeList, scores ):
 
         assert title
         assert a
-        a.validate()
+        try:
+            a.validate()
+        except AssertionError:
+            print( str( a ) )
+            raise
 
     # Map to array indices
     global animes
@@ -159,10 +180,7 @@ def initialize( animeList, scores ):
 
     # Precompute PY for each user
     global PY_anime_user
-    PY_anime_user = np.zeros( ( PY_anime.size, len( users ) ) )
-    for i in range( PY_anime.size ):
-
-        PY_anime_user[i] = vProbY( PY_anime, PR_anime, animeRatings, i )
+    PY_anime_user = vProbY( PY_anime, PR_anime, animeRatings )
 
     assert aTolerantEquals( logsumexp( PY_anime_user, axis = 1 ), 0.0 )
 
@@ -207,7 +225,7 @@ def initialize( animeList, scores ):
         for tag in tagScore:
             
             tagRatings[users[user]][tags[tag]] = int( round( tagScore[tag]/tagCount[tag] ) )
-
+    
     print( 'Calculating per-tag probabilities' )
     
     global PY_tag
@@ -216,10 +234,7 @@ def initialize( animeList, scores ):
 
     # Precompute PY for each user
     global PY_tag_user
-    PY_tag_user = np.zeros( ( PY_tag.size, len( users ) ) )
-    for i in range( PY_tag.size ):
-
-        PY_tag_user[i] = vProbY( PY_tag, PR_tag, tagRatings, i )
+    PY_tag_user = vProbY( PY_tag, PR_tag, tagRatings )
 
     assert aTolerantEquals( logsumexp( PY_tag_user, axis = 1 ), 0.0 )
 
@@ -241,7 +256,7 @@ def initialize( animeList, scores ):
 #   did not match any know show, returns None.
 def scoreProb( username, score, title, info=None ):
 
-    if username not in PY_tag_user:
+    if username not in users:
         return None
 
     if not ( minScore <= score <= maxScore ):
@@ -251,7 +266,16 @@ def scoreProb( username, score, title, info=None ):
         if title not in animes:
             return None
         else:
-            info = animes[title]
+            info = animeData[animes[title]]
+   
+    s = score - minScore
+    t = users[username]
+    ps = []
+    for tag in info.getTags():
 
-    return mean([sum( [( PY_tag_user[username][i] * PR_tag[tag][score][i] ) for i in range( len( PY_tag ) )] ) for tag in info.getTags()])
+        j = tags[tag]
+        ps.append( logsumexp( PY_tag_user[t] + PR_tag[:,j,s] ) )
+
+    return logsumexp( np.array( ps ) ) - np.log( len( ps ) )
+
 

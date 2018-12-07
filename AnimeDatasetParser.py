@@ -162,7 +162,23 @@ animeList = {title:anime[0] for title, anime in animeList_from_csv.items()} # Co
 #           Score must be in the range [1,10].
 scoreList = getScore(anime_watched, anime_cl)
 
+import numpy as np
 engine.initialize( animeList, scoreList )
+tests = [ ( 'karthiga', 'One Piece', 9 ),
+          ( 'karthiga', 'Bakuman. 2nd Season', 8 ),
+          ( 'Damonashu', 'Ghost in the Shell: Stand Alone Complex - Solid State Society', 8 ),
+          ( 'bskai', 'Suzumiya Haruhi no Shoushitsu', 10 ),
+          ( 'MistButterfly', 'Accel World', 6 ),
+          ( 'MistButterfly', 'Detective Conan Movie 17: Private Eye in the Distant Sea', 6 ),
+          ( 'Lithuelle', 'Senyuu. 2', 6 ),
+          ( 'magedgamed', 'Burn Up!', 8 ) ]
+
+for user, title, actual in tests:
+
+    print( '\nActual score: %d' % actual )
+    for i in range( 1, 11 ):
+
+        print( 'P(R=%d) = %.5f%%' % ( i, np.exp( engine.scoreProb( user, i, title ) ) * 100 ) )
 
 # In[143]:
 
