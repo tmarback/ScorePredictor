@@ -43,13 +43,27 @@ def aTolerantEquals( array, expected ):
 # - log P(Y=y)PROD[P(R=r|Y=y)]
 def logQ( PY, PR, r ):
 
-    rated = np.not_equal( r, np.full( r.size, -1 ) )
-    rated_j = np.extract( rated, np.arange( 0, r.size ) )
-    ratings = np.extract( rated, r )
-    return PY + np.sum( PR[rated_j, ratings] )
+    ratings = np.equal( r[:,np.newaxis], np.arange( PR.shape[1] )[np.newaxis,:] )
+    P = PY + np.sum( PR[ratings] )
+    assert P <= 0
+    return P
 
 # Vectorized version of logQ
-vLogQ = np.vectorize( logQ, signature = '(),(j,r),(j)->()' )
+#vLogQ = np.vectorize( logQ, signature = '(),(j,r),(j)->()' )
+#
+# PY - PY[y] = log P(Y=y)
+# PR - PR[y][j][r] = log P(R_j=r|Y=y)
+# r - r[t][j] = r^t_j - The user's ratings
+# 
+# Returns:
+# - P[t][y] = log P(Y=y)PROD[P(R=r^t|Y=y)]
+def vLogQ( PY, PR, r ):
+
+    ratings = np.equal( r[:,:,np.newaxis], np.arange( PR.shape[2] )[np.newaxis,np.newaxis,:] )
+    PR_picked = ratings[:,np.newaxis,:,:] * PR[np.newaxis,:,:,:]
+    P = PY[np.newaxis,:] + np.sum( PR_picked, axis = ( 2, 3 ) )
+    assert np.all( np.less_equal( P, 0 ) )
+    return P
 
 # Calculates the (log) likelihood of a user's ratings.
 # In other words, calculates log P(R=r(t))
@@ -63,11 +77,27 @@ vLogQ = np.vectorize( logQ, signature = '(),(j,r),(j)->()' )
 # - log P(R=r(t))
 def probEvidenceForUser( PY, PR, r ):
 
-    qs = vLogQ( PY, PR, r ) # Calculate log q for each y
-    return logsumexp( qs )
+    qs = vLogQ( PY, PR, r[np.newaxis,:] ) # Calculate log q for each y
+    P = logsumexp( qs )
+    assert P <= 0
+    return P
 
 # Vectorized version of probEvidenceForUser
-vProbEvidenceForUser = np.vectorize( probEvidenceForUser, signature = '(y),(y,j,r),(j)->()' )
+#vProbEvidenceForUser = np.vectorize( probEvidenceForUser, signature = '(y),(y,j,r),(j)->()' )
+#
+# Parameters:
+# PY - PY[y] = log P(Y=y)
+# PR - PR[y][j][r] = log P(Rj=r|Y=y)
+# r - r[t][j] = r^t_j - The user's ratings
+#
+# Returns:
+# - P[t] = log P(R=r^t)
+def vProbEvidenceForUser( PY, PR, r ):
+
+    qs = vLogQ( PY, PR, r )
+    P = logsumexp( qs, axis = 1 )
+    assert np.all( np.less_equal( P, 0 ) )
+    return P
 
 # Calculates the log-likelihood of the current state.
 #
@@ -80,7 +110,10 @@ vProbEvidenceForUser = np.vectorize( probEvidenceForUser, signature = '(y),(y,j,
 # - The log-likelihood
 def logLikelihood( PY, PR, r ):
 
-    return np.sum( vProbEvidenceForUser( PY, PR, r ) ) / len( r )
+    P = vProbEvidenceForUser( PY, PR, r )
+    L = np.sum( P ) / len( r )
+    assert L <= 0
+    return L
 
 # Calculates log P(Y=y|{Rj=rj(t)}) for a specific user t.
 #
@@ -94,13 +127,26 @@ def logLikelihood( PY, PR, r ):
 # - log P(Y=y|{Rj=rj(t)})
 def probY( PY, PR, r, y ):
 
-    return logQ( PY[y], PR[y], r ) - probEvidenceForUser( PY, PR, r )
+    P = logQ( PY[y], PR[y], r ) - probEvidenceForUser( PY, PR, r )
+    assert P <= 0
 
 # Vectorized version of probY over t
 # (y),(y,j,r),(t,j),()->(t)
-def vProbY( PY, PR, r, y ):
+#
+# Parameters:
+# PY - PY[y] = log P(Y=y)
+# PR - PR[y][j][r] = log P(Rj=r|Y=y)
+# r - r[j] = r^t_j - The user's ratings
+#
+# Returns:
+# - P[t][y] = log P(Y=y|{R=r^t})
+def vProbY( PY, PR, r ):
 
-    return vLogQ( PY[y], PR[y], r ) - vProbEvidenceForUser( PY, PR, r )
+    qs = vLogQ( PY, PR, r )
+    pEv = vProbEvidenceForUser( PY, PR, r )
+    P = qs - pEv[:,np.newaxis]
+    assert np.all( np.less_equal( P, 0 ) )
+    return P
 
 # Runs an iteration of the EM algorithm.
 #
@@ -114,31 +160,33 @@ def vProbY( PY, PR, r, y ):
 # - The updated PR
 def update( PY, PR, r ):
 
-    print( 'Updating PY' )
     T = r.shape[0]
     k, n, S = PR.shape
-    pit = np.empty( ( k, T ) )
-    for i in range( T ):
-
-        pit[i] = vProbY( PY, PR, r, i )
-
+    pit = np.transpose( vProbY( PY, PR, r ) )
     pi = logsumexp( pit, axis = 1 )
     newPY = np.log( 1 / T ) + pi
+
+    assert np.all( np.less_equal( PY, 0 ) )
+    assert not np.any( np.isnan( PY ) )
+    assert not np.any( np.isinf( PY ) )
     
-    print( 'Updating PR' )
     newPR = np.zeros( ( k, n, S ) )
-    for j in range( n ):
+    scores = np.transpose( r )
+    unrated = np.equal( scores, -1 )
+    for s in range( S ):
 
-        for s in range( S ):
- 
-            scoreMatch = np.equal( r[:,j], s )
-            unrated = np.equal( r[:,j], -1 )
-            for i in range( k ):
+        match = np.equal( scores, s )
+        notMatch = np.logical_not( np.logical_or( match, unrated ) )
+        notMatchFactor = np.zeros( ( n, T ) )
+        notMatchFactor[notMatch] = -np.inf
+        unratedFactor = PR[:,:,s,np.newaxis] * unrated[np.newaxis,:,:]
+        A = np.zeros( ( k, n, T ) ) + notMatchFactor[np.newaxis,:,:] + unratedFactor
+        newPR[:,:,s] = logsumexp( pit[:,np.newaxis,:] + A, axis = 2 ) - pi[:,np.newaxis]
 
-                ratedPits = np.extract( scoreMatch, pit[i] )
-                unratedPits = np.extract( unrated, pit[i] )
-                newPR[i][j][s] = np.logaddexp( logsumexp( ratedPits ) if ratedPits.size > 0 else 0, logsumexp( unratedPits ) + PR[i][j][s] if unratedPits.size > 0 else 0 ) - pi[i]
-        
+    assert np.all( np.less_equal( PR, 0 ) )
+    assert not np.any( np.isnan( PR ) )
+    assert not np.any( np.isinf( PR ) )
+
     return newPY, newPR
 
 # userLists - userLists[t][j] = r^t_j - The ratings of each user
@@ -167,13 +215,10 @@ def runEM( userLists ):
     oldLikelihood = logLikelihood( PY, PR, userLists )
     for i in range( runs ):
 
-        print( 'Running iteration %d' % ( i + 1 ) )
         PY, PR = update( PY, PR, userLists )
-        print( 'Updating likelihood' )
         likelihood = logLikelihood( PY, PR, userLists )
         assert likelihood >= oldLikelihood # Ensure likelihood does not decrease
         oldLikelihood = likelihood
-        print( 'Iteration completed' )
 
         completedSteps = int( ( i + 1 ) * 100 / runs )
         if completedSteps > oldCompletedSteps:

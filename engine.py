@@ -159,7 +159,7 @@ def initialize( animeList, scores ):
 
     # Precompute PY for each user
     global PY_anime_user
-    PY_anime_user = np.zeros( PY_anime.size, len( users ) )
+    PY_anime_user = np.zeros( ( PY_anime.size, len( users ) ) )
     for i in range( PY_anime.size ):
 
         PY_anime_user[i] = vProbY( PY_anime, PR_anime, animeRatings, i )
@@ -216,7 +216,7 @@ def initialize( animeList, scores ):
 
     # Precompute PY for each user
     global PY_tag_user
-    PY_tag_user = np.zeros( PY_tag.size, len( users ) )
+    PY_tag_user = np.zeros( ( PY_tag.size, len( users ) ) )
     for i in range( PY_tag.size ):
 
         PY_tag_user[i] = vProbY( PY_tag, PR_tag, tagRatings, i )

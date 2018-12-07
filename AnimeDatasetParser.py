@@ -15,7 +15,7 @@ import engine
 #files 
 anime_cl = "anime_cleaned.csv"
 users_cl = "users_cleaned.csv"
-anime_watched = "animelists_micro.csv"
+anime_watched = "animelists_tinier.csv"
 
 chunksize = 10 ** 6
 
